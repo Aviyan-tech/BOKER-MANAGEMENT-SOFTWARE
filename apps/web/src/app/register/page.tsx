@@ -5,6 +5,7 @@ import { useAuth, UserRole } from "../../context/AuthContext";
 import Link from "next/link";
 import { LucideLock, LucideMail, LucideUser, LucideLoader2, LucideUsers, LucideHome } from "lucide-react";
 import VishwasGharLogo from "../../components/VishwasGharLogo";
+import GoogleSignInButton from "../../components/GoogleSignInButton";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -171,6 +172,19 @@ export default function RegisterPage() {
               )}
             </button>
           </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-950 via-background to-background px-2 text-muted-foreground">
+                or
+              </span>
+            </div>
+          </div>
+
+          <GoogleSignInButton role={role} onError={setError} />
         </form>
 
         <div className="text-center mt-4">

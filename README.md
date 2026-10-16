@@ -6,7 +6,7 @@ A full-stack land brokerage application combining a public land marketplace, a r
 - **Frontend**: Next.js 14+ (App Router), TypeScript, Tailwind CSS, TanStack Query
 - **Backend**: FastAPI served with Uvicorn (Python 3.11+), SQLite / PostgreSQL via SQLAlchemy Async engine
 - **Real-time**: WebSockets for messaging, active presence, views updates, and offer/counter negotiations
-- **Authentication**: JWT Access/Refresh tokens with role claims (ADMIN, AGENT, CUSTOMER)
+- **Authentication**: JWT Access/Refresh tokens with role claims (ADMIN, AGENT, CUSTOMER, SELLER)
 
 ---
 
@@ -54,6 +54,54 @@ Login with the following accounts to experience different role flows:
 | **Admin** | `admin@terraflow.com` | `password` | Sees analytics, approves listings, sees all deals |
 | **Agent** | `agent@terraflow.com` | `password` | Manages listings, moves deals through Kanban pipeline, direct messages, submits price offers |
 | **Customer** | `customer@terraflow.com` | `password` | Browses listings, submits inquiries, participates in live negotiation |
+
+---
+
+## Google Sign-In Setup
+
+### 1. Create OAuth 2.0 Web Client in Google Cloud Console
+1. Go to [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a new project or select an existing one.
+3. Navigate to **APIs & Services** > **Credentials**.
+4. Click **Create Credentials** > **OAuth 2.0 Client ID**.
+5. Select **Web application**.
+6. Add authorized JavaScript origins:
+   - `http://localhost:3000` (development)
+7. Add authorized redirect URIs:
+   - `http://localhost:3000` (development)
+8. Copy the **Client ID**.
+
+### 2. Configure Backend
+1. In `apps/backend/.env`, add:
+   ```env
+   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   ```
+   Alternatively, copy `.env.example` to `.env` and populate `GOOGLE_CLIENT_ID`.
+
+### 3. Configure Frontend
+1. In `apps/web/.env.local`, add:
+   ```env
+   NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   ```
+   (This file is `.gitignore`d and not committed to version control.)
+
+### 4. Docker Compose (Optional)
+If using Docker, add the following to `docker-compose.yml`:
+- **Backend service**:
+  ```yaml
+  environment:
+    GOOGLE_CLIENT_ID: your-client-id.apps.googleusercontent.com
+  ```
+- **Web service**:
+  ```yaml
+  environment:
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID: your-client-id.apps.googleusercontent.com
+  ```
+
+### 5. Test Google Sign-In
+- Visit [http://localhost:3000/login](http://localhost:3000/login) or [http://localhost:3000/register](http://localhost:3000/register).
+- Click **"Sign in with Google"** or **"Continue with Google"**.
+- On first login, a new account is automatically created with the `CUSTOMER` role (or the selected role on register page).
 
 ---
 

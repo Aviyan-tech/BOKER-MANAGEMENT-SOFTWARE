@@ -24,6 +24,7 @@ interface AuthContextType {
   accessToken: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string, role?: UserRole) => Promise<void>;
   register: (email: string, name: string, password: string, role: UserRole) => Promise<void>;
   logout: () => Promise<void>;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
@@ -88,31 +89,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await res.json();
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
-      
-      // Fetch user profile
-      const profileRes = await fetch(`${API_URL}/api/v1/auth/me`, {
-        headers: { Authorization: `Bearer ${data.access_token}` },
-      });
-      
-      if (!profileRes.ok) throw new Error("Could not fetch user profile");
-      
-      const userData = await profileRes.json();
-      localStorage.setItem("user", JSON.stringify(userData));
-      
-      setAccessToken(data.access_token);
-      setUser(userData);
+      await completeLogin(data);
+    } catch (err: any) {
+      throw err;
+    }
+  };
 
-      if (userData.role === "ADMIN") {
-        router.push("/admin");
-      } else if (userData.role === "AGENT") {
-        router.push("/dashboard/subscription");
-      } else if (userData.role === "SELLER") {
-        router.push("/dashboard/seller");
-      } else {
-        router.push("/dashboard");
+  const completeLogin = async (data: any) => {
+    localStorage.setItem("access_token", data.access_token);
+    localStorage.setItem("refresh_token", data.refresh_token);
+    
+    // Fetch user profile
+    const profileRes = await fetch(`${API_URL}/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${data.access_token}` },
+    });
+    
+    if (!profileRes.ok) throw new Error("Could not fetch user profile");
+    
+    const userData = await profileRes.json();
+    localStorage.setItem("user", JSON.stringify(userData));
+    
+    setAccessToken(data.access_token);
+    setUser(userData);
+
+    if (userData.role === "ADMIN") {
+      router.push("/admin");
+    } else if (userData.role === "AGENT") {
+      router.push("/dashboard/subscription");
+    } else if (userData.role === "SELLER") {
+      router.push("/dashboard/seller");
+    } else {
+      router.push("/dashboard");
+    }
+  };
+
+  const loginWithGoogle = async (credential: string, role?: UserRole) => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential, role }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || "Google sign-in failed");
       }
+
+      const data = await res.json();
+      await completeLogin(data);
     } catch (err: any) {
       throw err;
     }
@@ -223,7 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, accessToken, loading, login, register, logout, fetchWithAuth }}>
+    <AuthContext.Provider value={{ user, accessToken, loading, login, loginWithGoogle, register, logout, fetchWithAuth }}>
       {children}
     </AuthContext.Provider>
   );

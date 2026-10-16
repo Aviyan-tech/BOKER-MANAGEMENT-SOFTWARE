@@ -10,3 +10,5 @@ python-multipart
 websockets
 bcrypt
 aiosqlite
+google-auth
+requests

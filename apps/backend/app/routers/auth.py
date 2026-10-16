@@ -1,9 +1,13 @@
 from datetime import timedelta
-from typing import Any
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+import secrets
+import google.oauth2.id_token
+import google.auth.transport.requests
 
 from app.core import security
 from app.core.config import settings
@@ -151,6 +155,111 @@ async def refresh_token(
         "user_id": user.id,
         "name": user.name
     }
+
+@router.post("/logout")
+async def logout(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> Any:
+    current_user.is_online = False
+    await db.commit()
+    return {"message": "Successfully logged out"}
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
+    role: Optional[UserRole] = None
+
+@router.post("/google", response_model=Token)
+async def google_auth(
+    request: GoogleAuthRequest,
+    db: AsyncSession = Depends(get_db)
+) -> Any:
+    """
+    Google Sign-In endpoint.
+    Verifies Google ID token and returns our own access/refresh tokens.
+    """
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google authentication is not configured"
+        )
+    
+    try:
+        # Verify the Google token (blocking operation, run in threadpool)
+        id_info = await run_in_threadpool(
+            google.oauth2.id_token.verify_oauth2_token,
+            request.credential,
+            google.auth.transport.requests.Request(),
+            settings.GOOGLE_CLIENT_ID
+        )
+        
+        # Require email verification
+        if not id_info.get("email_verified"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Email is not verified by Google"
+            )
+        
+        email = id_info.get("email")
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No email in Google profile"
+            )
+        
+        # Look up user by email
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalars().first()
+        
+        # Create user if doesn't exist
+        if not user:
+            # Sanitize role: only allow CUSTOMER, AGENT, SELLER
+            role = request.role if request.role in [UserRole.CUSTOMER, UserRole.AGENT, UserRole.SELLER] else UserRole.CUSTOMER
+            
+            # Generate unusable password
+            unusable_password = security.get_password_hash(secrets.token_urlsafe(32))
+            
+            user = User(
+                email=email,
+                name=id_info.get("name", email.split("@")[0]),
+                password_hash=unusable_password,
+                role=role,
+                avatar_url=id_info.get("picture", f"https://api.dicebear.com/7.x/adventurer/svg?seed={id_info.get('name', email)}"),
+                is_online=True
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+        else:
+            # Update is_online for existing user
+            user.is_online = True
+            await db.commit()
+            await db.refresh(user)
+        
+        # Generate our tokens
+        access_token = security.create_access_token(subject=user.id, role=user.role.value)
+        refresh_token = security.create_refresh_token(subject=user.id, role=user.role.value)
+        
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "role": user.role.value,
+            "user_id": user.id,
+            "name": user.name
+        }
+    
+    except ValueError as e:
+        # Invalid token
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Google token: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Google authentication failed: {str(e)}"
+        )
 
 @router.post("/logout")
 async def logout(
